@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sensory Map</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css" />
+  <style>
+    html, body { height: 100%; width: 100%; margin: 0; padding: 0; overflow: hidden; font-family: 'Segoe UI', Arial, sans-serif; }
+    * { box-sizing: border-box; }
+    #map { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; cursor: crosshair; }
+    #legend { position: fixed; bottom: 24px; right: 16px; z-index: 1000; background: rgba(255,255,255,0.96); border-radius: 12px; padding: 16px 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.25); min-width: 210px; }
+    #legend h3 { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; color: #444; }
+    .legend-item { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; font-size: 13px; color: #555; }
+    .dot { width: 14px; height: 14px; border-radius: 50%; display: inline-block; flex-shrink: 0; border: 2px solid rgba(0,0,0,0.2); }
+    .dot.green { background: #4CAF50; } .dot.yellow { background: #FFC107; } .dot.red { background: #F44336; }
+    .legend-hint { margin-top: 10px; font-size: 11px; color: #888; font-style: italic; }
+    #modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.55); z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 16px; }
+    #modal-overlay.hidden { display: none; }
+    #modal { background: #fff; border-radius: 16px; padding: 16px 24px; width: 100%; max-width: 480px; box-shadow: 0 8px 40px rgba(0,0,0,0.35); display: flex; flex-direction: column; gap: 8px; max-height: 88vh; overflow-y: auto; }
+    #modal h2 { font-size: 20px; font-weight: 700; color: #222; }
+    #modal label { font-size: 13px; font-weight: 600; color: #444; display: flex; flex-direction: column; gap: 4px; }
+    .req { color: #e53935; }
+    .slider-labels { display: flex; justify-content: space-between; font-size: 11px; font-weight: 400; color: #888; }
+    #modal input[type="text"], #modal textarea { width: 100%; padding: 9px 12px; border: 1.5px solid #ddd; border-radius: 8px; font-size: 14px; font-family: inherit; color: #222; }
+    #modal input[type="range"] { width: 100%; accent-color: #5c6bc0; cursor: pointer; }
+    #modal textarea { resize: vertical; }
+    .error { color: #e53935; font-size: 13px; background: #fff3f3; border-radius: 6px; padding: 8px 12px; border: 1px solid #ffcdd2; }
+    .error.hidden { display: none; }
+    .button-row { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
+    button { padding: 9px 22px; border-radius: 8px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; }
+    button:not(.primary) { background: #f0f0f0; color: #555; }
+    button.primary { background: #5c6bc0; color: #fff; }
+    button.primary:hover { background: #3f51b5; }
+    button.primary:disabled { background: #b0b8e8; cursor: not-allowed; }
+    .leaflet-popup-content { font-size: 13px; line-height: 1.6; min-width: 200px; }
+    .popup-title { font-weight: 700; font-size: 15px; margin-bottom: 6px; color: #222; }
+    .popup-category { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; margin-bottom: 8px; color: #fff; }
+    .popup-category.calm { background: #4CAF50; }
+    .popup-category.moderate { background: #FFC107; color: #333; }
+    .popup-category.overwhelming { background: #F44336; }
+    .popup-score { font-weight: 600; margin-bottom: 6px; }
+    .popup-levels { color: #666; font-size: 12px; }
+    .popup-note { margin-top: 8px; font-style: italic; color: #555; border-top: 1px solid #eee; padding-top: 6px; }
+    .popup-date { font-size: 11px; color: #aaa; margin-top: 6px; }
+    .popup-delete-btn { margin-top: 10px; width: 100%; padding: 6px 0; background: #fff0f0; color: #e53935; border: 1.5px solid #ffcdd2; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .popup-delete-btn:hover { background: #ffebee; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="legend">
+    <h3>Sensory Map Legend</h3>
+    <div class="legend-item"><span class="dot green"></span> Calm (score 3-6)</div>
+    <div class="legend-item"><span class="dot yellow"></span> Moderate (score 7-10)</div>
+    <div class="legend-item"><span class="dot red"></span> Overwhelming (score 11-15)</div>
+    <p class="legend-hint">Click anywhere on the map to tag a place.</p>
+  </div>
+  <div id="modal-overlay" class="hidden">
+    <div id="modal">
+      <h2>Tag This Place</h2>
+      <label for="place-name">Place Name <span class="req">*</span></label>
+      <input type="text" id="place-name" placeholder="e.g. Central Park North Entrance" maxlength="200" />
+      <label>Noise Level <span class="req">*</span>
+        <span class="slider-labels"><span>1 - Very Quiet</span><span id="noise-val">3</span><span>5 - Very Loud</span></span>
+      </label>
+      <input type="range" id="noise-level" min="1" max="5" value="3" oninput="document.getElementById('noise-val').textContent = this.value" />
+      <label>Crowd Level <span class="req">*</span>
+        <span class="slider-labels"><span>1 - Empty</span><span id="crowd-val">3</span><span>5 - Extremely Crowded</span></span>
+      </label>
+      <input type="range" id="crowd-level" min="1" max="5" value="3" oninput="document.getElementById('crowd-val').textContent = this.value" />
+      <label>Lighting Level <span class="req">*</span>
+        <span class="slider-labels"><span>1 - Very Dim</span><span id="lighting-val">3</span><span>5 - Very Bright</span></span>
+      </label>
+      <input type="range" id="lighting-level" min="1" max="5" value="3" oninput="document.getElementById('lighting-val').textContent = this.value" />
+      <label for="note">Optional Note</label>
+      <textarea id="note" rows="2" placeholder="e.g. Fluorescent lights flicker on the left aisle."></textarea>
+      <p id="form-error" class="error hidden"></p>
+      <div class="button-row">
+        <button id="btn-cancel">Cancel</button>
+        <button id="btn-submit" class="primary">Submit</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js"></script>
+  <script>
+    const map = L.map('map').setView([28.6139, 77.2090], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors', maxZoom: 19,
+    }).addTo(map);
+
+    const COLORS = { 'Calm': '#4CAF50', 'Moderate': '#FFC107', 'Overwhelming': '#F44336' };
+    const markerMap = {};
+
+    function makeMarker(place) {
+      const color = COLORS[place.sensory_category] || '#999';
+      const cat = place.sensory_category.toLowerCase();
+      const noteHtml = place.note ? `<div class="popup-note">💬 ${place.note}</div>` : '';
+      const date = new Date(place.created_at);
+      const dateStr = date.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      const dateHtml = `<div class="popup-date">🕐 Tagged on ${dateStr}</div>`;
+
+      const popup = `
+        <div class="popup-title">${place.place_name}</div>
+        <span class="popup-category ${cat}">${place.sensory_category}</span>
+        <div class="popup-score">Sensory Score: <strong>${place.sensory_score} / 15</strong></div>
+        <div class="popup-levels">🔊 Noise: ${place.noise_level}/5 &nbsp; 👥 Crowd: ${place.crowd_level}/5 &nbsp; 💡 Lighting: ${place.lighting_level}/5</div>
+        ${noteHtml}
+        ${dateHtml}
+        <button class="popup-delete-btn" onclick="deleteTag(${place.id})">🗑️ Delete this tag</button>`;
+
+      const marker = L.circleMarker([place.latitude, place.longitude], {
+        radius: 10, fillColor: color, color: '#fff', weight: 2, opacity: 1, fillOpacity: 0.85,
+      }).bindPopup(popup);
+
+      markerMap[place.id] = marker;
+      return marker;
+    }
+
+    async function deleteTag(id) {
+      if (!confirm('Are you sure you want to delete this tag?')) return;
+      try {
+        const res = await fetch(`/api/tags/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          if (markerMap[id]) { map.removeLayer(markerMap[id]); delete markerMap[id]; }
+        } else {
+          alert('Could not delete. Please try again.');
+        }
+      } catch (e) { alert('Could not connect to server.'); }
+    }
+
+    async function loadAllTags() {
+      try {
+        const res = await fetch('/api/tags');
+        const places = await res.json();
+        places.forEach(p => makeMarker(p).addTo(map));
+      } catch (e) { console.error('Failed to load tags:', e); }
+    }
+    loadAllTags();
+
+    let pendingLat = null, pendingLng = null;
+    map.on('click', function(e) {
+      pendingLat = e.latlng.lat;
+      pendingLng = e.latlng.lng;
+      openModal();
+    });
+
+    const overlay = document.getElementById('modal-overlay');
+    const formError = document.getElementById('form-error');
+
+    function openModal() {
+      document.getElementById('place-name').value = '';
+      document.getElementById('noise-level').value = 3;
+      document.getElementById('crowd-level').value = 3;
+      document.getElementById('lighting-level').value = 3;
+      document.getElementById('note').value = '';
+      document.getElementById('noise-val').textContent = '3';
+      document.getElementById('crowd-val').textContent = '3';
+      document.getElementById('lighting-val').textContent = '3';
+      formError.classList.add('hidden');
+      overlay.classList.remove('hidden');
+    }
+
+    function closeModal() {
+      overlay.classList.add('hidden');
+      pendingLat = null; pendingLng = null;
+    }
+
+    document.getElementById('btn-cancel').addEventListener('click', closeModal);
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+
+    document.getElementById('btn-submit').addEventListener('click', async function() {
+      const placeName = document.getElementById('place-name').value.trim();
+      const noiseLevel = parseInt(document.getElementById('noise-level').value);
+      const crowdLevel = parseInt(document.getElementById('crowd-level').value);
+      const lightLevel = parseInt(document.getElementById('lighting-level').value);
+      const note = document.getElementById('note').value.trim();
+
+      if (!placeName) {
+        formError.textContent = 'Please enter a place name.';
+        formError.classList.remove('hidden');
+        return;
+      }
+
+      const btn = document.getElementById('btn-submit');
+      btn.disabled = true; btn.textContent = 'Saving...';
+
+      try {
+        const res = await fetch('/api/tags', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            place_name: placeName, latitude: pendingLat, longitude: pendingLng,
+            noise_level: noiseLevel, crowd_level: crowdLevel, lighting_level: lightLevel, note: note,
+          }),
+        });
+        const result = await res.json();
+        if (!res.ok) {
+          formError.textContent = result.error || 'Something went wrong.';
+          formError.classList.remove('hidden');
+        } else {
+          makeMarker(result).addTo(map);
+          closeModal();
+        }
+      } catch (e) {
+        formError.textContent = 'Could not connect to server.';
+        formError.classList.remove('hidden');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Submit';
+      }
+    });
+  </script>
+</body>
+</html>

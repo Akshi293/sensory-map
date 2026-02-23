@@ -5,13 +5,15 @@ from datetime import datetime
 from dotenv import load_dotenv
 import os
 
-load_dotenv()  # reads .env file automatically
+load_dotenv()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.dirname(BASE_DIR)
+
 app = Flask(__name__,
-            static_folder=os.path.join(BASE_DIR, '..', 'frontend', 'static'),
+            static_folder=os.path.join(ROOT_DIR, 'frontend', 'static'),
             static_url_path='/static',
-            template_folder=os.path.join(BASE_DIR, '..', 'frontend', 'templates'))
+            template_folder=os.path.join(ROOT_DIR, 'frontend', 'templates'))
 CORS(app)
 
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
